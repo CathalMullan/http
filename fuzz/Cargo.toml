@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "http-fuzz"
 version = "0.0.0"
@@ -18,5 +20,3 @@ path = ".."
 [[bin]]
 name = "fuzz_http"
 path = "src/fuzz_http.rs"
-
-[workspace]

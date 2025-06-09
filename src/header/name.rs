@@ -77,7 +77,6 @@ macro_rules! standard_headers {
         }
 
         $(
-            $(#[$docs])*
             pub const $upcase: HeaderName = HeaderName {
                 inner: Repr::Standard(StandardHeader::$konst),
             };
@@ -85,7 +84,7 @@ macro_rules! standard_headers {
 
         impl StandardHeader {
             #[inline]
-            fn as_str(&self) -> &'static str {
+            const fn as_str(&self) -> &'static str {
                 match *self {
                     // Safety: test_parse_standard_headers ensures these &[u8]s are &str-safe.
                     $(
@@ -1084,24 +1083,24 @@ fn parse_hdr<'a>(
                 .for_each(|(index, out)| *out = MaybeUninit::new(table[*index as usize]));
             // Safety: len bytes of b were just initialized.
             let name: &'a [u8] = unsafe { slice_assume_init(&b[0..len]) };
-            match StandardHeader::from_bytes(name) {
-                Some(sh) => Ok(sh.into()),
-                None => {
+            StandardHeader::from_bytes(name).map_or_else(
+                || {
                     if name.contains(&0) {
                         Err(InvalidHeaderName::new())
                     } else {
                         Ok(HdrName::custom(name, true))
                     }
-                }
-            }
+                },
+                |sh| Ok(sh.into()),
+            )
         }
         SCRATCH_BUF_OVERFLOW..=super::MAX_HEADER_NAME_LEN => Ok(HdrName::custom(data, false)),
         _ => Err(InvalidHeaderName::new()),
     }
 }
 
-impl<'a> From<StandardHeader> for HdrName<'a> {
-    fn from(hdr: StandardHeader) -> HdrName<'a> {
+impl From<StandardHeader> for HdrName<'_> {
+    fn from(hdr: StandardHeader) -> Self {
         HdrName {
             inner: Repr::Standard(hdr),
         }
@@ -1112,7 +1111,7 @@ impl HeaderName {
     /// Converts a slice of bytes to an HTTP header name.
     ///
     /// This function normalizes the input.
-    pub fn from_bytes(src: &[u8]) -> Result<HeaderName, InvalidHeaderName> {
+    pub fn from_bytes(src: &[u8]) -> Result<Self, InvalidHeaderName> {
         let mut buf = uninit_u8_array();
         // Precondition: HEADER_CHARS is a valid table for parse_hdr().
         match parse_hdr(src, &mut buf, &HEADER_CHARS)?.inner {
@@ -1127,7 +1126,7 @@ impl HeaderName {
                 use bytes::BufMut;
                 let mut dst = BytesMut::with_capacity(buf.len());
 
-                for b in buf.iter() {
+                for b in buf {
                     // HEADER_CHARS maps all bytes to valid single-byte UTF-8
                     let b = HEADER_CHARS[*b as usize];
 
@@ -1166,7 +1165,7 @@ impl HeaderName {
     /// // Parsing a header that contains uppercase characters
     /// assert!(HeaderName::from_lowercase(b"Content-Length").is_err());
     /// ```
-    pub fn from_lowercase(src: &[u8]) -> Result<HeaderName, InvalidHeaderName> {
+    pub fn from_lowercase(src: &[u8]) -> Result<Self, InvalidHeaderName> {
         let mut buf = uninit_u8_array();
         // Precondition: HEADER_CHARS_H2 is a valid table for parse_hdr()
         match parse_hdr(src, &mut buf, &HEADER_CHARS_H2)?.inner {
@@ -1178,7 +1177,7 @@ impl HeaderName {
                 Ok(Custom(val).into())
             }
             Repr::Custom(MaybeLower { buf, lower: false }) => {
-                for &b in buf.iter() {
+                for &b in buf {
                     // HEADER_CHARS_H2 maps all bytes that are not valid single-byte
                     // UTF-8 to 0 so this check returns an error for invalid UTF-8.
                     if HEADER_CHARS_H2[b as usize] == 0 {
@@ -1253,10 +1252,11 @@ impl HeaderName {
     /// let b = HeaderName::from_static("FOOBAR"); // This line panics!
     /// ```
     #[allow(unconditional_panic)] // required for the panic circumvention
-    pub const fn from_static(src: &'static str) -> HeaderName {
+    #[must_use]
+    pub const fn from_static(src: &'static str) -> Self {
         let name_bytes = src.as_bytes();
         if let Some(standard) = StandardHeader::from_bytes(name_bytes) {
-            return HeaderName {
+            return Self {
                 inner: Repr::Standard(standard),
             };
         }
@@ -1281,7 +1281,7 @@ impl HeaderName {
             ([] as [u8; 0])[0]; // Invalid header name
         }
 
-        HeaderName {
+        Self {
             inner: Repr::Custom(Custom(ByteStr::from_static(src))),
         }
     }
@@ -1290,6 +1290,7 @@ impl HeaderName {
     ///
     /// The returned string will always be lower case.
     #[inline]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn as_str(&self) -> &str {
         match self.inner {
             Repr::Standard(v) => v.as_str(),
@@ -1305,8 +1306,8 @@ impl HeaderName {
 impl FromStr for HeaderName {
     type Err = InvalidHeaderName;
 
-    fn from_str(s: &str) -> Result<HeaderName, InvalidHeaderName> {
-        HeaderName::from_bytes(s.as_bytes()).map_err(|_| InvalidHeaderName { _priv: () })
+    fn from_str(s: &str) -> Result<Self, InvalidHeaderName> {
+        Self::from_bytes(s.as_bytes()).map_err(|_| InvalidHeaderName { _priv: () })
     }
 }
 
@@ -1341,13 +1342,13 @@ impl fmt::Display for HeaderName {
 }
 
 impl InvalidHeaderName {
-    pub(super) fn new() -> InvalidHeaderName {
-        InvalidHeaderName { _priv: () }
+    pub(super) const fn new() -> Self {
+        Self { _priv: () }
     }
 }
 
-impl<'a> From<&'a HeaderName> for HeaderName {
-    fn from(src: &'a HeaderName) -> HeaderName {
+impl<'a> From<&'a Self> for HeaderName {
+    fn from(src: &'a Self) -> Self {
         src.clone()
     }
 }
@@ -1355,11 +1356,11 @@ impl<'a> From<&'a HeaderName> for HeaderName {
 #[doc(hidden)]
 impl<T> From<Repr<T>> for Bytes
 where
-    T: Into<Bytes>,
+    T: Into<Self>,
 {
-    fn from(repr: Repr<T>) -> Bytes {
+    fn from(repr: Repr<T>) -> Self {
         match repr {
-            Repr::Standard(header) => Bytes::from_static(header.as_str().as_bytes()),
+            Repr::Standard(header) => Self::from_static(header.as_str().as_bytes()),
             Repr::Custom(header) => header.into(),
         }
     }
@@ -1367,8 +1368,8 @@ where
 
 impl From<Custom> for Bytes {
     #[inline]
-    fn from(Custom(inner): Custom) -> Bytes {
-        Bytes::from(inner)
+    fn from(Custom(inner): Custom) -> Self {
+        Self::from(inner)
     }
 }
 
@@ -1416,8 +1417,8 @@ impl TryFrom<Vec<u8>> for HeaderName {
 
 #[doc(hidden)]
 impl From<StandardHeader> for HeaderName {
-    fn from(src: StandardHeader) -> HeaderName {
-        HeaderName {
+    fn from(src: StandardHeader) -> Self {
+        Self {
             inner: Repr::Standard(src),
         }
     }
@@ -1425,21 +1426,21 @@ impl From<StandardHeader> for HeaderName {
 
 #[doc(hidden)]
 impl From<Custom> for HeaderName {
-    fn from(src: Custom) -> HeaderName {
-        HeaderName {
+    fn from(src: Custom) -> Self {
+        Self {
             inner: Repr::Custom(src),
         }
     }
 }
 
-impl<'a> PartialEq<&'a HeaderName> for HeaderName {
+impl<'a> PartialEq<&'a Self> for HeaderName {
     #[inline]
-    fn eq(&self, other: &&'a HeaderName) -> bool {
+    fn eq(&self, other: &&'a Self) -> bool {
         *self == **other
     }
 }
 
-impl<'a> PartialEq<HeaderName> for &'a HeaderName {
+impl PartialEq<HeaderName> for &HeaderName {
     #[inline]
     fn eq(&self, other: &HeaderName) -> bool {
         *other == *self
@@ -1493,7 +1494,7 @@ impl<'a> PartialEq<&'a str> for HeaderName {
     }
 }
 
-impl<'a> PartialEq<HeaderName> for &'a str {
+impl PartialEq<HeaderName> for &str {
     /// Performs a case-insensitive comparison of the string against the header
     /// name
     #[inline]
@@ -1503,7 +1504,7 @@ impl<'a> PartialEq<HeaderName> for &'a str {
 }
 
 impl fmt::Debug for InvalidHeaderName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InvalidHeaderName")
             // skip _priv noise
             .finish()
@@ -1522,7 +1523,7 @@ impl Error for InvalidHeaderName {}
 
 impl<'a> HdrName<'a> {
     // Precondition: if lower then buf is valid UTF-8
-    fn custom(buf: &'a [u8], lower: bool) -> HdrName<'a> {
+    const fn custom(buf: &'a [u8], lower: bool) -> Self {
         HdrName {
             // Invariant (on MaybeLower): follows from the precondition
             inner: Repr::Custom(MaybeLower { buf, lower }),
@@ -1553,9 +1554,9 @@ impl<'a> HdrName<'a> {
 
 #[doc(hidden)]
 impl<'a> From<HdrName<'a>> for HeaderName {
-    fn from(src: HdrName<'a>) -> HeaderName {
+    fn from(src: HdrName<'a>) -> Self {
         match src.inner {
-            Repr::Standard(s) => HeaderName {
+            Repr::Standard(s) => Self {
                 inner: Repr::Standard(s),
             },
             Repr::Custom(maybe_lower) => {
@@ -1564,14 +1565,14 @@ impl<'a> From<HdrName<'a>> for HeaderName {
                     // Safety: the invariant on MaybeLower ensures buf is valid UTF-8.
                     let byte_str = unsafe { ByteStr::from_utf8_unchecked(buf) };
 
-                    HeaderName {
+                    Self {
                         inner: Repr::Custom(Custom(byte_str)),
                     }
                 } else {
                     use bytes::BufMut;
                     let mut dst = BytesMut::with_capacity(maybe_lower.buf.len());
 
-                    for b in maybe_lower.buf.iter() {
+                    for b in maybe_lower.buf {
                         // HEADER_CHARS maps each byte to a valid single-byte UTF-8
                         // codepoint.
                         dst.put_u8(HEADER_CHARS[*b as usize]);
@@ -1582,7 +1583,7 @@ impl<'a> From<HdrName<'a>> for HeaderName {
                     // dst (and hence dst.freeze()) is thus valid UTF-8.
                     let buf = unsafe { ByteStr::from_utf8_unchecked(dst.freeze()) };
 
-                    HeaderName {
+                    Self {
                         inner: Repr::Custom(Custom(buf)),
                     }
                 }
@@ -1598,7 +1599,7 @@ impl<'a> PartialEq<HdrName<'a>> for HeaderName {
         match self.inner {
             Repr::Standard(a) => match other.inner {
                 Repr::Standard(b) => a == b,
-                _ => false,
+                Repr::Custom(_) => false,
             },
             Repr::Custom(Custom(ref a)) => match other.inner {
                 Repr::Custom(ref b) => {
@@ -1608,7 +1609,7 @@ impl<'a> PartialEq<HdrName<'a>> for HeaderName {
                         eq_ignore_ascii_case(a.as_bytes(), b.buf)
                     }
                 }
-                _ => false,
+                Repr::Standard(_) => false,
             },
         }
     }
@@ -1619,13 +1620,13 @@ impl<'a> PartialEq<HdrName<'a>> for HeaderName {
 impl Hash for Custom {
     #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        hasher.write(self.0.as_bytes())
+        hasher.write(self.0.as_bytes());
     }
 }
 
 // ===== MaybeLower =====
 
-impl<'a> Hash for MaybeLower<'a> {
+impl Hash for MaybeLower<'_> {
     #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         if self.lower {
@@ -1656,7 +1657,7 @@ fn eq_ignore_ascii_case(lower: &[u8], s: &[u8]) -> bool {
 const SCRATCH_BUF_SIZE: usize = 64;
 const SCRATCH_BUF_OVERFLOW: usize = SCRATCH_BUF_SIZE + 1;
 
-fn uninit_u8_array() -> [MaybeUninit<u8>; SCRATCH_BUF_SIZE] {
+const fn uninit_u8_array() -> [MaybeUninit<u8>; SCRATCH_BUF_SIZE] {
     let arr = MaybeUninit::<[MaybeUninit<u8>; SCRATCH_BUF_SIZE]>::uninit();
     // Safety: assume_init() is claiming that an array of MaybeUninit<>
     // has been initialized, but MaybeUninit<>'s do not require initialization.
@@ -1667,8 +1668,8 @@ fn uninit_u8_array() -> [MaybeUninit<u8>; SCRATCH_BUF_SIZE] {
 //
 // Safety: All elements of `slice` must be initialized to prevent
 // undefined behavior.
-unsafe fn slice_assume_init<T>(slice: &[MaybeUninit<T>]) -> &[T] {
-    &*(slice as *const [MaybeUninit<T>] as *const [T])
+const unsafe fn slice_assume_init<T>(slice: &[MaybeUninit<T>]) -> &[T] {
+    unsafe { &*(std::ptr::from_ref::<[MaybeUninit<T>]>(slice) as *const [T]) }
 }
 
 #[cfg(test)]
@@ -1688,8 +1689,7 @@ mod tests {
             let hdr = vec![1u8; i];
             assert!(
                 HeaderName::from_bytes(&hdr).is_err(),
-                "{} invalid header chars did not fail",
-                i
+                "{i} invalid header chars did not fail"
             );
         }
     }
@@ -1722,7 +1722,9 @@ mod tests {
     #[should_panic]
     fn test_static_invalid_name_lengths() {
         // Safety: ONE_TOO_LONG contains only the UTF-8 safe, single-byte codepoint b'a'.
-        let _ = HeaderName::from_static(unsafe { std::str::from_utf8_unchecked(ONE_TOO_LONG) });
+        drop(HeaderName::from_static(unsafe {
+            std::str::from_utf8_unchecked(ONE_TOO_LONG)
+        }));
     }
 
     #[test]
@@ -1827,13 +1829,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_from_static_std_uppercase() {
-        HeaderName::from_static("Vary");
+        drop(HeaderName::from_static("Vary"));
     }
 
     #[test]
     #[should_panic]
     fn test_from_static_std_symbol() {
-        HeaderName::from_static("vary{}");
+        drop(HeaderName::from_static("vary{}"));
     }
 
     // MaybeLower { lower: true }
@@ -1849,13 +1851,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_from_static_custom_short_uppercase() {
-        HeaderName::from_static("custom header");
+        drop(HeaderName::from_static("custom header"));
     }
 
     #[test]
     #[should_panic]
     fn test_from_static_custom_short_symbol() {
-        HeaderName::from_static("CustomHeader");
+        drop(HeaderName::from_static("CustomHeader"));
     }
 
     // MaybeLower { lower: false }
@@ -1875,17 +1877,17 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_from_static_custom_long_uppercase() {
-        HeaderName::from_static(
+        drop(HeaderName::from_static(
             "Longer-Than-63--ThisHeaderIsLongerThanSixtyThreeCharactersAndThusHandledDifferent",
-        );
+        ));
     }
 
     #[test]
     #[should_panic]
     fn test_from_static_custom_long_symbol() {
-        HeaderName::from_static(
-            "longer-than-63--thisheader{}{}{}{}islongerthansixtythreecharactersandthushandleddifferent"
-        );
+        drop(HeaderName::from_static(
+            "longer-than-63--thisheader{}{}{}{}islongerthansixtythreecharactersandthushandleddifferent",
+        ));
     }
 
     #[test]
@@ -1900,12 +1902,14 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_from_static_empty() {
-        HeaderName::from_static("");
+        drop(HeaderName::from_static(""));
     }
 
     #[test]
     fn test_all_tokens() {
-        HeaderName::from_static("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyz");
+        drop(HeaderName::from_static(
+            "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyz",
+        ));
     }
 
     #[test]

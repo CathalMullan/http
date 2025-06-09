@@ -44,7 +44,7 @@
 //!             .body(())
 //!     }
 //!
-//!     let has_awesome_header = req.headers().contains_key("Awesome");
+//!     let has_awesome_header = req.headers().contains_key(&"Awesome");
 //!     let body = req.body();
 //!
 //!     // ...
@@ -107,7 +107,7 @@ use crate::{Extensions, Result, Uri};
 ///             .body(())
 ///     }
 ///
-///     let has_awesome_header = req.headers().contains_key("Awesome");
+///     let has_awesome_header = req.headers().contains_key(&"Awesome");
 ///     let body = req.body();
 ///
 ///     // ...
@@ -165,6 +165,7 @@ pub struct Request<T> {
 /// The HTTP request head consists of a method, uri, version, and a set of
 /// header fields.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct Parts {
     /// The request's method
     pub method: Method,
@@ -180,8 +181,6 @@ pub struct Parts {
 
     /// The request's extensions
     pub extensions: Extensions,
-
-    _priv: (),
 }
 
 /// An HTTP request builder
@@ -211,6 +210,7 @@ impl Request<()> {
     ///     .unwrap();
     /// ```
     #[inline]
+    #[must_use]
     pub fn builder() -> Builder {
         Builder::new()
     }
@@ -431,8 +431,8 @@ impl<T> Request<T> {
     /// assert_eq!(*request.body(), "hello world");
     /// ```
     #[inline]
-    pub fn new(body: T) -> Request<T> {
-        Request {
+    pub fn new(body: T) -> Self {
+        Self {
             head: Parts::new(),
             body,
         }
@@ -451,8 +451,8 @@ impl<T> Request<T> {
     /// let request = Request::from_parts(parts, body);
     /// ```
     #[inline]
-    pub fn from_parts(parts: Parts, body: T) -> Request<T> {
-        Request { head: parts, body }
+    pub const fn from_parts(parts: Parts, body: T) -> Self {
+        Self { head: parts, body }
     }
 
     /// Returns a reference to the associated HTTP method.
@@ -465,7 +465,7 @@ impl<T> Request<T> {
     /// assert_eq!(*request.method(), Method::GET);
     /// ```
     #[inline]
-    pub fn method(&self) -> &Method {
+    pub const fn method(&self) -> &Method {
         &self.head.method
     }
 
@@ -480,7 +480,7 @@ impl<T> Request<T> {
     /// assert_eq!(*request.method(), Method::PUT);
     /// ```
     #[inline]
-    pub fn method_mut(&mut self) -> &mut Method {
+    pub const fn method_mut(&mut self) -> &mut Method {
         &mut self.head.method
     }
 
@@ -494,7 +494,7 @@ impl<T> Request<T> {
     /// assert_eq!(*request.uri(), *"/");
     /// ```
     #[inline]
-    pub fn uri(&self) -> &Uri {
+    pub const fn uri(&self) -> &Uri {
         &self.head.uri
     }
 
@@ -509,7 +509,7 @@ impl<T> Request<T> {
     /// assert_eq!(*request.uri(), *"/hello");
     /// ```
     #[inline]
-    pub fn uri_mut(&mut self) -> &mut Uri {
+    pub const fn uri_mut(&mut self) -> &mut Uri {
         &mut self.head.uri
     }
 
@@ -523,7 +523,7 @@ impl<T> Request<T> {
     /// assert_eq!(request.version(), Version::HTTP_11);
     /// ```
     #[inline]
-    pub fn version(&self) -> Version {
+    pub const fn version(&self) -> Version {
         self.head.version
     }
 
@@ -538,7 +538,7 @@ impl<T> Request<T> {
     /// assert_eq!(request.version(), Version::HTTP_2);
     /// ```
     #[inline]
-    pub fn version_mut(&mut self) -> &mut Version {
+    pub const fn version_mut(&mut self) -> &mut Version {
         &mut self.head.version
     }
 
@@ -552,7 +552,7 @@ impl<T> Request<T> {
     /// assert!(request.headers().is_empty());
     /// ```
     #[inline]
-    pub fn headers(&self) -> &HeaderMap<HeaderValue> {
+    pub const fn headers(&self) -> &HeaderMap<HeaderValue> {
         &self.head.headers
     }
 
@@ -568,7 +568,7 @@ impl<T> Request<T> {
     /// assert!(!request.headers().is_empty());
     /// ```
     #[inline]
-    pub fn headers_mut(&mut self) -> &mut HeaderMap<HeaderValue> {
+    pub const fn headers_mut(&mut self) -> &mut HeaderMap<HeaderValue> {
         &mut self.head.headers
     }
 
@@ -582,7 +582,7 @@ impl<T> Request<T> {
     /// assert!(request.extensions().get::<i32>().is_none());
     /// ```
     #[inline]
-    pub fn extensions(&self) -> &Extensions {
+    pub const fn extensions(&self) -> &Extensions {
         &self.head.extensions
     }
 
@@ -598,7 +598,7 @@ impl<T> Request<T> {
     /// assert_eq!(request.extensions().get(), Some(&"hello"));
     /// ```
     #[inline]
-    pub fn extensions_mut(&mut self) -> &mut Extensions {
+    pub const fn extensions_mut(&mut self) -> &mut Extensions {
         &mut self.head.extensions
     }
 
@@ -612,7 +612,7 @@ impl<T> Request<T> {
     /// assert!(request.body().is_empty());
     /// ```
     #[inline]
-    pub fn body(&self) -> &T {
+    pub const fn body(&self) -> &T {
         &self.body
     }
 
@@ -627,7 +627,7 @@ impl<T> Request<T> {
     /// assert!(!request.body().is_empty());
     /// ```
     #[inline]
-    pub fn body_mut(&mut self) -> &mut T {
+    pub const fn body_mut(&mut self) -> &mut T {
         &mut self.body
     }
 
@@ -688,8 +688,8 @@ impl<T> Request<T> {
 }
 
 impl<T: Default> Default for Request<T> {
-    fn default() -> Request<T> {
-        Request::new(T::default())
+    fn default() -> Self {
+        Self::new(T::default())
     }
 }
 
@@ -708,14 +708,13 @@ impl<T: fmt::Debug> fmt::Debug for Request<T> {
 
 impl Parts {
     /// Creates a new default instance of `Parts`
-    fn new() -> Parts {
-        Parts {
+    fn new() -> Self {
+        Self {
             method: Method::default(),
             uri: Uri::default(),
             version: Version::default(),
             headers: HeaderMap::default(),
             extensions: Extensions::default(),
-            _priv: (),
         }
     }
 }
@@ -728,8 +727,7 @@ impl fmt::Debug for Parts {
             .field("version", &self.version)
             .field("headers", &self.headers)
             // omits Extensions because not useful
-            // omits _priv because not useful
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -747,8 +745,9 @@ impl Builder {
     ///     .unwrap();
     /// ```
     #[inline]
-    pub fn new() -> Builder {
-        Builder::default()
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Set the HTTP method for this request.
@@ -765,7 +764,8 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn method<T>(self, method: T) -> Builder
+    #[must_use]
+    pub fn method<T>(self, method: T) -> Self
     where
         T: TryInto<Method>,
         <T as TryInto<Method>>::Error: Into<crate::Error>,
@@ -810,7 +810,8 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn uri<T>(self, uri: T) -> Builder
+    #[must_use]
+    pub fn uri<T>(self, uri: T) -> Self
     where
         T: TryInto<Uri>,
         <T as TryInto<Uri>>::Error: Into<crate::Error>,
@@ -854,7 +855,8 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn version(self, version: Version) -> Builder {
+    #[must_use]
+    pub fn version(self, version: Version) -> Self {
         self.and_then(move |mut head| {
             head.version = version;
             Ok(head)
@@ -898,7 +900,8 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn header<K, V>(self, key: K, value: V) -> Builder
+    #[must_use]
+    pub fn header<K, V>(self, key: K, value: V) -> Self
     where
         K: TryInto<HeaderName>,
         <K as TryInto<HeaderName>>::Error: Into<crate::Error>,
@@ -968,7 +971,8 @@ impl Builder {
     /// assert_eq!(req.extensions().get::<&'static str>(),
     ///            Some(&"My Extension"));
     /// ```
-    pub fn extension<T>(self, extension: T) -> Builder
+    #[must_use]
+    pub fn extension<T>(self, extension: T) -> Self
     where
         T: Clone + Any + Send + Sync + 'static,
     {
@@ -1043,7 +1047,7 @@ impl Builder {
     where
         F: FnOnce(Parts) -> Result<Parts>,
     {
-        Builder {
+        Self {
             inner: self.inner.and_then(func),
         }
     }
@@ -1051,8 +1055,8 @@ impl Builder {
 
 impl Default for Builder {
     #[inline]
-    fn default() -> Builder {
-        Builder {
+    fn default() -> Self {
+        Self {
             inner: Ok(Parts::new()),
         }
     }

@@ -28,8 +28,11 @@ impl Builder {
     ///     .unwrap();
     /// ```
     #[inline]
-    pub fn new() -> Builder {
-        Builder::default()
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            parts: Ok(Parts::new()),
+        }
     }
 
     /// Set the `Scheme` for this URI.
@@ -42,6 +45,7 @@ impl Builder {
     /// let mut builder = uri::Builder::new();
     /// builder.scheme("https");
     /// ```
+    #[must_use]
     pub fn scheme<T>(self, scheme: T) -> Self
     where
         T: TryInto<Scheme>,
@@ -66,6 +70,7 @@ impl Builder {
     ///     .build()
     ///     .unwrap();
     /// ```
+    #[must_use]
     pub fn authority<T>(self, auth: T) -> Self
     where
         T: TryInto<Authority>,
@@ -90,6 +95,7 @@ impl Builder {
     ///     .build()
     ///     .unwrap();
     /// ```
+    #[must_use]
     pub fn path_and_query<T>(self, p_and_q: T) -> Self
     where
         T: TryInto<PathAndQuery>,
@@ -137,7 +143,7 @@ impl Builder {
     where
         F: FnOnce(Parts) -> Result<Parts, crate::Error>,
     {
-        Builder {
+        Self {
             parts: self.parts.and_then(func),
         }
     }
@@ -145,10 +151,8 @@ impl Builder {
 
 impl Default for Builder {
     #[inline]
-    fn default() -> Builder {
-        Builder {
-            parts: Ok(Parts::default()),
-        }
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -182,10 +186,10 @@ mod tests {
     fn build_from_string() {
         for i in 1..10 {
             let uri = Builder::new()
-                .path_and_query(format!("/foo?a={}", i))
+                .path_and_query(format!("/foo?a={i}"))
                 .build()
                 .unwrap();
-            let expected_query = format!("a={}", i);
+            let expected_query = format!("a={i}");
             assert_eq!(uri.path(), "/foo");
             assert_eq!(uri.query(), Some(expected_query.as_str()));
         }
@@ -194,9 +198,9 @@ mod tests {
     #[test]
     fn build_from_string_ref() {
         for i in 1..10 {
-            let p_a_q = format!("/foo?a={}", i);
+            let p_a_q = format!("/foo?a={i}");
             let uri = Builder::new().path_and_query(&p_a_q).build().unwrap();
-            let expected_query = format!("a={}", i);
+            let expected_query = format!("a={i}");
             assert_eq!(uri.path(), "/foo");
             assert_eq!(uri.query(), Some(expected_query.as_str()));
         }

@@ -29,17 +29,17 @@ pub(super) enum Protocol {
 
 impl Scheme {
     /// HTTP protocol scheme
-    pub const HTTP: Scheme = Scheme {
+    pub const HTTP: Self = Self {
         inner: Scheme2::Standard(Protocol::Http),
     };
 
     /// HTTP protocol over TLS.
-    pub const HTTPS: Scheme = Scheme {
+    pub const HTTPS: Self = Self {
         inner: Scheme2::Standard(Protocol::Https),
     };
 
-    pub(super) fn empty() -> Self {
-        Scheme {
+    pub(super) const fn empty() -> Self {
+        Self {
             inner: Scheme2::None,
         }
     }
@@ -54,9 +54,10 @@ impl Scheme {
     /// assert_eq!(scheme.as_str(), "http");
     /// ```
     #[inline]
+    #[must_use]
     pub fn as_str(&self) -> &str {
-        use self::Protocol::*;
-        use self::Scheme2::*;
+        use self::Protocol::{Http, Https};
+        use self::Scheme2::{None, Other, Standard};
 
         match self.inner {
             Standard(Http) => "http",
@@ -71,12 +72,12 @@ impl<'a> TryFrom<&'a [u8]> for Scheme {
     type Error = InvalidUri;
     #[inline]
     fn try_from(s: &'a [u8]) -> Result<Self, Self::Error> {
-        use self::Scheme2::*;
+        use self::Scheme2::{None, Other, Standard};
 
         match Scheme2::parse_exact(s)? {
             None => Err(ErrorKind::InvalidScheme.into()),
             Standard(p) => Ok(Standard(p).into()),
-            Other(_) => {
+            Other(()) => {
                 let bytes = Bytes::copy_from_slice(s);
 
                 // Safety: postcondition on parse_exact() means that s and
@@ -125,13 +126,12 @@ impl AsRef<str> for Scheme {
 }
 
 impl PartialEq for Scheme {
-    fn eq(&self, other: &Scheme) -> bool {
-        use self::Protocol::*;
-        use self::Scheme2::*;
+    fn eq(&self, other: &Self) -> bool {
+        use self::Protocol::{Http, Https};
+        use self::Scheme2::{None, Other, Standard};
 
         match (&self.inner, &other.inner) {
-            (&Standard(Http), &Standard(Http)) => true,
-            (&Standard(Https), &Standard(Https)) => true,
+            (&Standard(Http), &Standard(Http)) | (&Standard(Https), &Standard(Https)) => true,
             (Other(a), Other(b)) => a.eq_ignore_ascii_case(b),
             (&None, _) | (_, &None) => unreachable!(),
             _ => false,
@@ -184,8 +184,8 @@ impl Hash for Scheme {
 }
 
 impl<T> Scheme2<T> {
-    pub(super) fn is_none(&self) -> bool {
-        matches!(*self, Scheme2::None)
+    pub(super) const fn is_none(&self) -> bool {
+        matches!(*self, Self::None)
     }
 }
 
@@ -247,11 +247,7 @@ impl Scheme2<usize> {
                 // that it is a valid single byte UTF-8 code point.
                 for &b in s {
                     match SCHEME_CHARS[b as usize] {
-                        b':' => {
-                            // Don't want :// here
-                            return Err(ErrorKind::InvalidScheme.into());
-                        }
-                        0 => {
+                        b':' | 0 => {
                             return Err(ErrorKind::InvalidScheme.into());
                         }
                         _ => {}
@@ -263,7 +259,7 @@ impl Scheme2<usize> {
         }
     }
 
-    pub(super) fn parse(s: &[u8]) -> Result<Scheme2<usize>, InvalidUri> {
+    pub(super) fn parse(s: &[u8]) -> Result<Self, InvalidUri> {
         if s.len() >= 7 {
             // Check for HTTP
             if s[..7].eq_ignore_ascii_case(b"http://") {
@@ -300,7 +296,7 @@ impl Scheme2<usize> {
                         }
 
                         // Return scheme
-                        return Ok(Scheme2::Other(i));
+                        return Ok(Self::Other(i));
                     }
                     // Invalid scheme character, abort
                     0 => break,
@@ -309,29 +305,29 @@ impl Scheme2<usize> {
             }
         }
 
-        Ok(Scheme2::None)
+        Ok(Self::None)
     }
 }
 
 impl Protocol {
-    pub(super) fn len(&self) -> usize {
-        match *self {
-            Protocol::Http => 4,
-            Protocol::Https => 5,
+    pub(super) const fn len(self) -> usize {
+        match self {
+            Self::Http => 4,
+            Self::Https => 5,
         }
     }
 }
 
 impl<T> From<Protocol> for Scheme2<T> {
     fn from(src: Protocol) -> Self {
-        Scheme2::Standard(src)
+        Self::Standard(src)
     }
 }
 
 #[doc(hidden)]
 impl From<Scheme2> for Scheme {
     fn from(src: Scheme2) -> Self {
-        Scheme { inner: src }
+        Self { inner: src }
     }
 }
 
@@ -356,6 +352,6 @@ mod test {
     }
 
     fn scheme(s: &str) -> Scheme {
-        s.parse().expect(&format!("Invalid scheme: {}", s))
+        s.parse().unwrap_or_else(|_| panic!("Invalid scheme: {s}"))
     }
 }

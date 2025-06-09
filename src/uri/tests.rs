@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use super::{ErrorKind, InvalidUri, Port, Uri, URI_CHARS};
+use super::{ErrorKind, InvalidUri, Port, URI_CHARS, Uri};
 
 #[test]
 fn test_char_table() {
@@ -26,6 +26,8 @@ macro_rules! test_parse {
     ) => (
         #[test]
         fn $test_name() {
+            const ALT: &'static [&'static str] = &$alt;
+
             let orig_str = $str;
             let uri = match Uri::from_str(orig_str) {
                 Ok(uri) => uri,
@@ -42,8 +44,6 @@ macro_rules! test_parse {
             let new_str = uri.to_string();
             let new_uri = Uri::from_str(&new_str).expect("to_string output parses again as a Uri");
             assert_eq!(new_uri, orig_str, "round trip still equals original str");
-
-            const ALT: &'static [&'static str] = &$alt;
 
             for &alt in ALT.iter() {
                 let other: Uri = alt.parse().unwrap();

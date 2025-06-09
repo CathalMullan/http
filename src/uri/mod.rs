@@ -112,9 +112,17 @@ pub struct Parts {
 
     /// The origin-form component of a URI
     pub path_and_query: Option<PathAndQuery>,
+}
 
-    /// Allow extending in the future
-    _priv: (),
+impl Parts {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            scheme: None,
+            authority: None,
+            path_and_query: None,
+        }
+    }
 }
 
 /// An error resulting from a failed attempt to construct a URI.
@@ -198,7 +206,8 @@ impl Uri {
     ///     .build()
     ///     .unwrap();
     /// ```
-    pub fn builder() -> Builder {
+    #[must_use]
+    pub const fn builder() -> Builder {
         Builder::new()
     }
 
@@ -236,7 +245,7 @@ impl Uri {
     /// assert_eq!(uri.authority().unwrap(), "foo.com");
     /// assert_eq!(uri.path(), "/foo");
     /// ```
-    pub fn from_parts(src: Parts) -> Result<Uri, InvalidUriParts> {
+    pub fn from_parts(src: Parts) -> Result<Self, InvalidUriParts> {
         if src.scheme.is_some() {
             if src.authority.is_none() {
                 return Err(ErrorKind::AuthorityMissing.into());
@@ -249,24 +258,22 @@ impl Uri {
             return Err(ErrorKind::SchemeMissing.into());
         }
 
-        let scheme = match src.scheme {
-            Some(scheme) => scheme,
-            None => Scheme {
+        let scheme = src.scheme.map_or_else(
+            || Scheme {
                 inner: Scheme2::None,
             },
-        };
+            |scheme| scheme,
+        );
 
-        let authority = match src.authority {
-            Some(authority) => authority,
-            None => Authority::empty(),
-        };
+        let authority = src
+            .authority
+            .map_or_else(Authority::empty, |authority| authority);
 
-        let path_and_query = match src.path_and_query {
-            Some(path_and_query) => path_and_query,
-            None => PathAndQuery::empty(),
-        };
+        let path_and_query = src
+            .path_and_query
+            .map_or_else(PathAndQuery::empty, |path_and_query| path_and_query);
 
-        Ok(Uri {
+        Ok(Self {
             scheme,
             authority,
             path_and_query,
@@ -282,15 +289,15 @@ impl Uri {
         T: AsRef<[u8]> + 'static,
     {
         if_downcast_into!(T, Bytes, src, {
-            return Uri::from_shared(src);
+            return Self::from_shared(src);
         });
 
-        Uri::try_from(src.as_ref())
+        Self::try_from(src.as_ref())
     }
 
     // Not public while `bytes` is unstable.
-    fn from_shared(s: Bytes) -> Result<Uri, InvalidUri> {
-        use self::ErrorKind::*;
+    fn from_shared(s: Bytes) -> Result<Self, InvalidUri> {
+        use self::ErrorKind::{Empty, TooLong};
 
         if s.len() > MAX_LEN {
             return Err(TooLong.into());
@@ -302,14 +309,14 @@ impl Uri {
             }
             1 => match s[0] {
                 b'/' => {
-                    return Ok(Uri {
+                    return Ok(Self {
                         scheme: Scheme::empty(),
                         authority: Authority::empty(),
                         path_and_query: PathAndQuery::slash(),
                     });
                 }
                 b'*' => {
-                    return Ok(Uri {
+                    return Ok(Self {
                         scheme: Scheme::empty(),
                         authority: Authority::empty(),
                         path_and_query: PathAndQuery::star(),
@@ -318,7 +325,7 @@ impl Uri {
                 _ => {
                     let authority = Authority::from_shared(s)?;
 
-                    return Ok(Uri {
+                    return Ok(Self {
                         scheme: Scheme::empty(),
                         authority,
                         path_and_query: PathAndQuery::empty(),
@@ -329,7 +336,7 @@ impl Uri {
         }
 
         if s[0] == b'/' {
-            return Ok(Uri {
+            return Ok(Self {
                 scheme: Scheme::empty(),
                 authority: Authority::empty(),
                 path_and_query: PathAndQuery::from_shared(s)?,
@@ -357,11 +364,12 @@ impl Uri {
     /// assert_eq!(uri.host().unwrap(), "example.com");
     /// assert_eq!(uri.path(), "/foo");
     /// ```
+    #[must_use]
     pub fn from_static(src: &'static str) -> Self {
         let s = Bytes::from_static(src.as_bytes());
-        match Uri::from_shared(s) {
+        match Self::from_shared(s) {
             Ok(uri) => uri,
-            Err(e) => panic!("static str is not valid URI: {}", e),
+            Err(e) => panic!("static str is not valid URI: {e}"),
         }
     }
 
@@ -392,7 +400,7 @@ impl Uri {
 
     /// Returns the path & query components of the Uri
     #[inline]
-    pub fn path_and_query(&self) -> Option<&PathAndQuery> {
+    pub const fn path_and_query(&self) -> Option<&PathAndQuery> {
         if !self.scheme.inner.is_none() || self.authority.data.is_empty() {
             Some(&self.path_and_query)
         } else {
@@ -479,7 +487,7 @@ impl Uri {
     /// assert!(uri.scheme().is_none());
     /// ```
     #[inline]
-    pub fn scheme(&self) -> Option<&Scheme> {
+    pub const fn scheme(&self) -> Option<&Scheme> {
         if self.scheme.inner.is_none() {
             None
         } else {
@@ -544,7 +552,7 @@ impl Uri {
     /// assert!(uri.authority().is_none());
     /// ```
     #[inline]
-    pub fn authority(&self) -> Option<&Authority> {
+    pub const fn authority(&self) -> Option<&Authority> {
         if self.authority.data.is_empty() {
             None
         } else {
@@ -587,7 +595,7 @@ impl Uri {
     /// ```
     #[inline]
     pub fn host(&self) -> Option<&str> {
-        self.authority().map(|a| a.host())
+        self.authority().map(authority::Authority::host)
     }
 
     /// Get the port part of this `Uri`.
@@ -634,7 +642,7 @@ impl Uri {
     /// assert!(uri.port().is_none());
     /// ```
     pub fn port(&self) -> Option<Port<&str>> {
-        self.authority().and_then(|a| a.port())
+        self.authority().and_then(authority::Authority::port)
     }
 
     /// Get the port of this `Uri` as a `u16`.
@@ -700,7 +708,7 @@ impl Uri {
         self.path_and_query.query()
     }
 
-    fn has_path(&self) -> bool {
+    const fn has_path(&self) -> bool {
         !self.path_and_query.data.is_empty() || !self.scheme.inner.is_none()
     }
 }
@@ -710,7 +718,7 @@ impl<'a> TryFrom<&'a [u8]> for Uri {
 
     #[inline]
     fn try_from(t: &'a [u8]) -> Result<Self, Self::Error> {
-        Uri::from_shared(Bytes::copy_from_slice(t))
+        Self::from_shared(Bytes::copy_from_slice(t))
     }
 }
 
@@ -737,7 +745,7 @@ impl TryFrom<String> for Uri {
 
     #[inline]
     fn try_from(t: String) -> Result<Self, Self::Error> {
-        Uri::from_shared(Bytes::from(t))
+        Self::from_shared(Bytes::from(t))
     }
 }
 
@@ -746,7 +754,7 @@ impl TryFrom<Vec<u8>> for Uri {
 
     #[inline]
     fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
-        Uri::from_shared(Bytes::from(vec))
+        Self::from_shared(Bytes::from(vec))
     }
 }
 
@@ -755,15 +763,15 @@ impl TryFrom<Parts> for Uri {
 
     #[inline]
     fn try_from(src: Parts) -> Result<Self, Self::Error> {
-        Uri::from_parts(src)
+        Self::from_parts(src)
     }
 }
 
-impl<'a> TryFrom<&'a Uri> for Uri {
+impl<'a> TryFrom<&'a Self> for Uri {
     type Error = crate::Error;
 
     #[inline]
-    fn try_from(src: &'a Uri) -> Result<Self, Self::Error> {
+    fn try_from(src: &'a Self) -> Result<Self, Self::Error> {
         Ok(src.clone())
     }
 }
@@ -810,11 +818,10 @@ impl From<Uri> for Parts {
             Some(src.authority)
         };
 
-        Parts {
+        Self {
             scheme,
             authority,
             path_and_query,
-            _priv: (),
         }
     }
 }
@@ -825,7 +832,7 @@ fn parse_full(mut s: Bytes) -> Result<Uri, InvalidUri> {
         Scheme2::None => Scheme2::None,
         Scheme2::Standard(p) => {
             // TODO: use truncate
-            let _ = s.split_to(p.len() + 3);
+            drop(s.split_to(p.len() + 3));
             Scheme2::Standard(p)
         }
         Scheme2::Other(n) => {
@@ -833,7 +840,7 @@ fn parse_full(mut s: Bytes) -> Result<Uri, InvalidUri> {
             let mut scheme = s.split_to(n + 3);
 
             // Strip ://, TODO: truncate
-            let _ = scheme.split_off(n);
+            drop(scheme.split_off(n));
 
             // Allocate the ByteStr
             let val = unsafe { ByteStr::from_utf8_unchecked(scheme) };
@@ -883,13 +890,13 @@ impl FromStr for Uri {
     type Err = InvalidUri;
 
     #[inline]
-    fn from_str(s: &str) -> Result<Uri, InvalidUri> {
-        Uri::try_from(s.as_bytes())
+    fn from_str(s: &str) -> Result<Self, InvalidUri> {
+        Self::try_from(s.as_bytes())
     }
 }
 
 impl PartialEq for Uri {
-    fn eq(&self, other: &Uri) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         if self.scheme() != other.scheme() {
             return false;
         }
@@ -1001,7 +1008,7 @@ impl<'a> PartialEq<&'a str> for Uri {
     }
 }
 
-impl<'a> PartialEq<Uri> for &'a str {
+impl PartialEq<Uri> for &str {
     fn eq(&self, uri: &Uri) -> bool {
         uri == *self
     }
@@ -1012,8 +1019,8 @@ impl Eq for Uri {}
 /// Returns a `Uri` representing `/`
 impl Default for Uri {
     #[inline]
-    fn default() -> Uri {
-        Uri {
+    fn default() -> Self {
+        Self {
             scheme: Scheme::empty(),
             authority: Authority::empty(),
             path_and_query: PathAndQuery::slash(),
@@ -1024,17 +1031,17 @@ impl Default for Uri {
 impl fmt::Display for Uri {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(scheme) = self.scheme() {
-            write!(f, "{}://", scheme)?;
+            write!(f, "{scheme}://")?;
         }
 
         if let Some(authority) = self.authority() {
-            write!(f, "{}", authority)?;
+            write!(f, "{authority}")?;
         }
 
         write!(f, "{}", self.path())?;
 
         if let Some(query) = self.query() {
-            write!(f, "?{}", query)?;
+            write!(f, "?{query}")?;
         }
 
         Ok(())
@@ -1048,19 +1055,19 @@ impl fmt::Debug for Uri {
 }
 
 impl From<ErrorKind> for InvalidUri {
-    fn from(src: ErrorKind) -> InvalidUri {
-        InvalidUri(src)
+    fn from(src: ErrorKind) -> Self {
+        Self(src)
     }
 }
 
 impl From<ErrorKind> for InvalidUriParts {
-    fn from(src: ErrorKind) -> InvalidUriParts {
-        InvalidUriParts(src.into())
+    fn from(src: ErrorKind) -> Self {
+        Self(src.into())
     }
 }
 
 impl InvalidUri {
-    fn s(&self) -> &str {
+    const fn s(&self) -> &str {
         match self.0 {
             ErrorKind::InvalidUriChar => "invalid uri character",
             ErrorKind::InvalidScheme => "invalid scheme",

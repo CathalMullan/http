@@ -1035,6 +1035,6 @@ pub fn main() {
     for &(doc, string) in HEADERS.iter() {
         println!("{}", &doc[1..doc.len()-5]);
         println!("    ({}, {}, {:?});", constantize(string), upcase(string), string);
-        println!("");
+        println!();
     }
 }

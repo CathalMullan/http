@@ -17,7 +17,7 @@
 //!         .header("Foo", "Bar")
 //!         .status(StatusCode::OK);
 //!
-//!     if req.headers().contains_key("Another-Header") {
+//!     if req.headers().contains_key(&"Another-Header") {
 //!         builder = builder.header("Another-Header", "Ack");
 //!     }
 //!
@@ -53,7 +53,7 @@
 //!     panic!("failed to get a successful response status!");
 //! }
 //!
-//! if let Some(date) = response.headers().get("Date") {
+//! if let Some(date) = response.headers().get(&"Date") {
 //!     // we've got a `Date` header!
 //! }
 //!
@@ -93,7 +93,7 @@ use crate::{Extensions, Result};
 ///         .header("Foo", "Bar")
 ///         .status(StatusCode::OK);
 ///
-///     if req.headers().contains_key("Another-Header") {
+///     if req.headers().contains_key(&"Another-Header") {
 ///         builder = builder.header("Another-Header", "Ack");
 ///     }
 ///
@@ -129,7 +129,7 @@ use crate::{Extensions, Result};
 ///     panic!("failed to get a successful response status!");
 /// }
 ///
-/// if let Some(date) = response.headers().get("Date") {
+/// if let Some(date) = response.headers().get(&"Date") {
 ///     // we've got a `Date` header!
 /// }
 ///
@@ -187,6 +187,7 @@ pub struct Response<T> {
 /// The HTTP response head consists of a status, version, and a set of
 /// header fields.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct Parts {
     /// The response's status
     pub status: StatusCode,
@@ -199,8 +200,6 @@ pub struct Parts {
 
     /// The response's extensions
     pub extensions: Extensions,
-
-    _priv: (),
 }
 
 /// An HTTP response builder
@@ -229,7 +228,8 @@ impl Response<()> {
     ///     .unwrap();
     /// ```
     #[inline]
-    pub fn builder() -> Builder {
+    #[must_use]
+    pub const fn builder() -> Builder {
         Builder::new()
     }
 }
@@ -250,8 +250,8 @@ impl<T> Response<T> {
     /// assert_eq!(*response.body(), "hello world");
     /// ```
     #[inline]
-    pub fn new(body: T) -> Response<T> {
-        Response {
+    pub const fn new(body: T) -> Self {
+        Self {
             head: Parts::new(),
             body,
         }
@@ -273,8 +273,8 @@ impl<T> Response<T> {
     /// assert_eq!(*response.body(), "hello world");
     /// ```
     #[inline]
-    pub fn from_parts(parts: Parts, body: T) -> Response<T> {
-        Response { head: parts, body }
+    pub const fn from_parts(parts: Parts, body: T) -> Self {
+        Self { head: parts, body }
     }
 
     /// Returns the `StatusCode`.
@@ -287,7 +287,7 @@ impl<T> Response<T> {
     /// assert_eq!(response.status(), StatusCode::OK);
     /// ```
     #[inline]
-    pub fn status(&self) -> StatusCode {
+    pub const fn status(&self) -> StatusCode {
         self.head.status
     }
 
@@ -302,7 +302,7 @@ impl<T> Response<T> {
     /// assert_eq!(response.status(), StatusCode::CREATED);
     /// ```
     #[inline]
-    pub fn status_mut(&mut self) -> &mut StatusCode {
+    pub const fn status_mut(&mut self) -> &mut StatusCode {
         &mut self.head.status
     }
 
@@ -316,7 +316,7 @@ impl<T> Response<T> {
     /// assert_eq!(response.version(), Version::HTTP_11);
     /// ```
     #[inline]
-    pub fn version(&self) -> Version {
+    pub const fn version(&self) -> Version {
         self.head.version
     }
 
@@ -331,7 +331,7 @@ impl<T> Response<T> {
     /// assert_eq!(response.version(), Version::HTTP_2);
     /// ```
     #[inline]
-    pub fn version_mut(&mut self) -> &mut Version {
+    pub const fn version_mut(&mut self) -> &mut Version {
         &mut self.head.version
     }
 
@@ -345,7 +345,7 @@ impl<T> Response<T> {
     /// assert!(response.headers().is_empty());
     /// ```
     #[inline]
-    pub fn headers(&self) -> &HeaderMap<HeaderValue> {
+    pub const fn headers(&self) -> &HeaderMap<HeaderValue> {
         &self.head.headers
     }
 
@@ -361,7 +361,7 @@ impl<T> Response<T> {
     /// assert!(!response.headers().is_empty());
     /// ```
     #[inline]
-    pub fn headers_mut(&mut self) -> &mut HeaderMap<HeaderValue> {
+    pub const fn headers_mut(&mut self) -> &mut HeaderMap<HeaderValue> {
         &mut self.head.headers
     }
 
@@ -375,7 +375,7 @@ impl<T> Response<T> {
     /// assert!(response.extensions().get::<i32>().is_none());
     /// ```
     #[inline]
-    pub fn extensions(&self) -> &Extensions {
+    pub const fn extensions(&self) -> &Extensions {
         &self.head.extensions
     }
 
@@ -391,7 +391,7 @@ impl<T> Response<T> {
     /// assert_eq!(response.extensions().get(), Some(&"hello"));
     /// ```
     #[inline]
-    pub fn extensions_mut(&mut self) -> &mut Extensions {
+    pub const fn extensions_mut(&mut self) -> &mut Extensions {
         &mut self.head.extensions
     }
 
@@ -405,7 +405,7 @@ impl<T> Response<T> {
     /// assert!(response.body().is_empty());
     /// ```
     #[inline]
-    pub fn body(&self) -> &T {
+    pub const fn body(&self) -> &T {
         &self.body
     }
 
@@ -420,7 +420,7 @@ impl<T> Response<T> {
     /// assert!(!response.body().is_empty());
     /// ```
     #[inline]
-    pub fn body_mut(&mut self) -> &mut T {
+    pub const fn body_mut(&mut self) -> &mut T {
         &mut self.body
     }
 
@@ -482,8 +482,8 @@ impl<T> Response<T> {
 
 impl<T: Default> Default for Response<T> {
     #[inline]
-    fn default() -> Response<T> {
-        Response::new(T::default())
+    fn default() -> Self {
+        Self::new(T::default())
     }
 }
 
@@ -501,13 +501,12 @@ impl<T: fmt::Debug> fmt::Debug for Response<T> {
 
 impl Parts {
     /// Creates a new default instance of `Parts`
-    fn new() -> Parts {
-        Parts {
-            status: StatusCode::default(),
-            version: Version::default(),
-            headers: HeaderMap::default(),
-            extensions: Extensions::default(),
-            _priv: (),
+    const fn new() -> Self {
+        Self {
+            status: StatusCode::new(),
+            version: Version::new(),
+            headers: HeaderMap::new(),
+            extensions: Extensions::new(),
         }
     }
 }
@@ -519,8 +518,7 @@ impl fmt::Debug for Parts {
             .field("version", &self.version)
             .field("headers", &self.headers)
             // omits Extensions because not useful
-            // omits _priv because not useful
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -539,8 +537,11 @@ impl Builder {
     ///     .unwrap();
     /// ```
     #[inline]
-    pub fn new() -> Builder {
-        Builder::default()
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            inner: Ok(Parts::new()),
+        }
     }
 
     /// Set the HTTP status for this response.
@@ -557,7 +558,8 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn status<T>(self, status: T) -> Builder
+    #[must_use]
+    pub fn status<T>(self, status: T) -> Self
     where
         T: TryInto<StatusCode>,
         <T as TryInto<StatusCode>>::Error: Into<crate::Error>,
@@ -582,7 +584,8 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn version(self, version: Version) -> Builder {
+    #[must_use]
+    pub fn version(self, version: Version) -> Self {
         self.and_then(move |mut head| {
             head.version = version;
             Ok(head)
@@ -608,7 +611,8 @@ impl Builder {
     ///     .body(())
     ///     .unwrap();
     /// ```
-    pub fn header<K, V>(self, key: K, value: V) -> Builder
+    #[must_use]
+    pub fn header<K, V>(self, key: K, value: V) -> Self
     where
         K: TryInto<HeaderName>,
         <K as TryInto<HeaderName>>::Error: Into<crate::Error>,
@@ -639,6 +643,7 @@ impl Builder {
     /// assert_eq!( headers["Accept"], "text/html" );
     /// assert_eq!( headers["X-Custom-Foo"], "bar" );
     /// ```
+    #[must_use]
     pub fn headers_ref(&self) -> Option<&HeaderMap<HeaderValue>> {
         self.inner.as_ref().ok().map(|h| &h.headers)
     }
@@ -681,7 +686,8 @@ impl Builder {
     /// assert_eq!(response.extensions().get::<&'static str>(),
     ///            Some(&"My Extension"));
     /// ```
-    pub fn extension<T>(self, extension: T) -> Builder
+    #[must_use]
+    pub fn extension<T>(self, extension: T) -> Self
     where
         T: Clone + Any + Send + Sync + 'static,
     {
@@ -704,6 +710,7 @@ impl Builder {
     /// assert_eq!(extensions.get::<&'static str>(), Some(&"My Extension"));
     /// assert_eq!(extensions.get::<u32>(), Some(&5u32));
     /// ```
+    #[must_use]
     pub fn extensions_ref(&self) -> Option<&Extensions> {
         self.inner.as_ref().ok().map(|h| &h.extensions)
     }
@@ -756,7 +763,7 @@ impl Builder {
     where
         F: FnOnce(Parts) -> Result<Parts>,
     {
-        Builder {
+        Self {
             inner: self.inner.and_then(func),
         }
     }
@@ -764,10 +771,8 @@ impl Builder {
 
 impl Default for Builder {
     #[inline]
-    fn default() -> Builder {
-        Builder {
-            inner: Ok(Parts::new()),
-        }
+    fn default() -> Self {
+        Self::new()
     }
 }
 

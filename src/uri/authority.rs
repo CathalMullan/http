@@ -15,8 +15,8 @@ pub struct Authority {
 }
 
 impl Authority {
-    pub(super) fn empty() -> Self {
-        Authority {
+    pub(super) const fn empty() -> Self {
+        Self {
             data: ByteStr::new(),
         }
     }
@@ -45,8 +45,9 @@ impl Authority {
     /// let authority = Authority::from_static("example.com");
     /// assert_eq!(authority.host(), "example.com");
     /// ```
+    #[must_use]
     pub fn from_static(src: &'static str) -> Self {
-        Authority::from_shared(Bytes::from_static(src.as_bytes()))
+        Self::from_shared(Bytes::from_static(src.as_bytes()))
             .expect("static str is not valid authority")
     }
 
@@ -59,23 +60,24 @@ impl Authority {
         T: AsRef<[u8]> + 'static,
     {
         if_downcast_into!(T, Bytes, src, {
-            return Authority::from_shared(src);
+            return Self::from_shared(src);
         });
 
-        Authority::try_from(src.as_ref())
+        Self::try_from(src.as_ref())
     }
 
     // Note: this may return an *empty* Authority. You might want `parse_non_empty`.
     // Postcondition: for all Ok() returns, s[..ret.unwrap()] is valid UTF-8 where
     // ret is the return value.
     pub(super) fn parse(s: &[u8]) -> Result<usize, InvalidUri> {
+        const MAX_COLONS: u32 = 8; // e.g., [FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80
+
         let mut colon_cnt = 0u32;
         let mut start_bracket = false;
         let mut end_bracket = false;
         let mut has_percent = false;
         let mut end = s.len();
         let mut at_sign_pos = None;
-        const MAX_COLONS: u32 = 8; // e.g., [FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80
 
         // Among other things, this loop checks that every byte in s up to the
         // first '/', '?', or '#' is a valid URI character (or in some contexts,
@@ -171,7 +173,7 @@ impl Authority {
         if s.is_empty() {
             return Err(ErrorKind::Empty.into());
         }
-        Authority::parse(s)
+        Self::parse(s)
     }
 
     /// Get the host of this `Authority`.
@@ -273,7 +275,7 @@ impl AsRef<str> for Authority {
 }
 
 impl PartialEq for Authority {
-    fn eq(&self, other: &Authority) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.data.eq_ignore_ascii_case(&other.data)
     }
 }
@@ -302,7 +304,7 @@ impl PartialEq<Authority> for str {
     }
 }
 
-impl<'a> PartialEq<Authority> for &'a str {
+impl PartialEq<Authority> for &str {
     fn eq(&self, other: &Authority) -> bool {
         self.eq_ignore_ascii_case(other.as_str())
     }
@@ -337,57 +339,57 @@ impl PartialEq<Authority> for String {
 /// assert!(authority > "abc.com");
 /// ```
 impl PartialOrd for Authority {
-    fn partial_cmp(&self, other: &Authority) -> Option<cmp::Ordering> {
-        let left = self.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
-        let right = other.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        let left = self.data.as_bytes().iter().map(u8::to_ascii_lowercase);
+        let right = other.data.as_bytes().iter().map(u8::to_ascii_lowercase);
         left.partial_cmp(right)
     }
 }
 
 impl PartialOrd<str> for Authority {
     fn partial_cmp(&self, other: &str) -> Option<cmp::Ordering> {
-        let left = self.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
-        let right = other.as_bytes().iter().map(|b| b.to_ascii_lowercase());
+        let left = self.data.as_bytes().iter().map(u8::to_ascii_lowercase);
+        let right = other.as_bytes().iter().map(u8::to_ascii_lowercase);
         left.partial_cmp(right)
     }
 }
 
 impl PartialOrd<Authority> for str {
     fn partial_cmp(&self, other: &Authority) -> Option<cmp::Ordering> {
-        let left = self.as_bytes().iter().map(|b| b.to_ascii_lowercase());
-        let right = other.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
+        let left = self.as_bytes().iter().map(u8::to_ascii_lowercase);
+        let right = other.data.as_bytes().iter().map(u8::to_ascii_lowercase);
         left.partial_cmp(right)
     }
 }
 
-impl<'a> PartialOrd<Authority> for &'a str {
+impl PartialOrd<Authority> for &str {
     fn partial_cmp(&self, other: &Authority) -> Option<cmp::Ordering> {
-        let left = self.as_bytes().iter().map(|b| b.to_ascii_lowercase());
-        let right = other.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
+        let left = self.as_bytes().iter().map(u8::to_ascii_lowercase);
+        let right = other.data.as_bytes().iter().map(u8::to_ascii_lowercase);
         left.partial_cmp(right)
     }
 }
 
 impl<'a> PartialOrd<&'a str> for Authority {
     fn partial_cmp(&self, other: &&'a str) -> Option<cmp::Ordering> {
-        let left = self.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
-        let right = other.as_bytes().iter().map(|b| b.to_ascii_lowercase());
+        let left = self.data.as_bytes().iter().map(u8::to_ascii_lowercase);
+        let right = other.as_bytes().iter().map(u8::to_ascii_lowercase);
         left.partial_cmp(right)
     }
 }
 
 impl PartialOrd<String> for Authority {
     fn partial_cmp(&self, other: &String) -> Option<cmp::Ordering> {
-        let left = self.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
-        let right = other.as_bytes().iter().map(|b| b.to_ascii_lowercase());
+        let left = self.data.as_bytes().iter().map(u8::to_ascii_lowercase);
+        let right = other.as_bytes().iter().map(u8::to_ascii_lowercase);
         left.partial_cmp(right)
     }
 }
 
 impl PartialOrd<Authority> for String {
     fn partial_cmp(&self, other: &Authority) -> Option<cmp::Ordering> {
-        let left = self.as_bytes().iter().map(|b| b.to_ascii_lowercase());
-        let right = other.data.as_bytes().iter().map(|b| b.to_ascii_lowercase());
+        let left = self.as_bytes().iter().map(u8::to_ascii_lowercase);
+        let right = other.data.as_bytes().iter().map(u8::to_ascii_lowercase);
         left.partial_cmp(right)
     }
 }
@@ -451,7 +453,7 @@ impl TryFrom<Vec<u8>> for Authority {
 
     #[inline]
     fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
-        Authority::from_shared(vec.into())
+        Self::from_shared(vec.into())
     }
 }
 
@@ -460,7 +462,7 @@ impl TryFrom<String> for Authority {
 
     #[inline]
     fn try_from(t: String) -> Result<Self, Self::Error> {
-        Authority::from_shared(t.into())
+        Self::from_shared(t.into())
     }
 }
 
@@ -495,7 +497,7 @@ fn host(auth: &str) -> &str {
             .find(']')
             .expect("parsing should validate brackets");
         // ..= ranges aren't available in 1.20, our minimum Rust version...
-        &host_port[0..i + 1]
+        &host_port[0..=i]
     } else {
         host_port
             .split(':')
@@ -619,10 +621,10 @@ mod tests {
     #[test]
     fn compares_with_a_string() {
         let authority: Authority = "def.com".parse().unwrap();
-        assert!(authority < "ghi.com".to_string());
-        assert!("ghi.com".to_string() > authority);
-        assert!(authority > "abc.com".to_string());
-        assert!("abc.com".to_string() < authority);
+        assert!(authority < *"ghi.com");
+        assert!(*"ghi.com" > authority);
+        assert!(authority > *"abc.com");
+        assert!(*"abc.com" < authority);
     }
 
     #[test]

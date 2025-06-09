@@ -19,9 +19,43 @@ A set of types for representing HTTP requests and responses.
 """
 keywords = ["http"]
 categories = ["web-programming"]
-edition = "2018"
-# When updating this value, don't forget to also adjust the GitHub Actions config.
-rust-version = "1.49.0"
+edition = "2024"
+rust-version = "1.87"
+
+# https://doc.rust-lang.org/rustc/lints/groups.html
+[lints.rust]
+unsafe_code = "allow"
+
+unused = { level = "deny", priority = -2 }
+future-incompatible = { level = "deny", priority = -1 }
+keyword-idents = { level = "deny", priority = -1 }
+let-underscore = { level = "deny", priority = -1 }
+nonstandard-style = { level = "deny", priority = -1 }
+refining-impl-trait = { level = "deny", priority = -1 }
+rust-2018-compatibility = { level = "deny", priority = -1 }
+rust-2018-idioms = { level = "deny", priority = -1 }
+rust-2021-compatibility = { level = "deny", priority = -1 }
+rust-2024-compatibility = { level = "deny", priority = -1 }
+
+# https://rust-lang.github.io/rust-clippy/master/index.html
+[lints.clippy]
+cargo = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+
+# FIXME
+multiple_crate_versions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cognitive_complexity = "allow"
+should_panic_without_expect = "allow"
 
 [workspace]
 members = [
@@ -37,9 +71,9 @@ default = ["std"]
 std = []
 
 [dependencies]
-bytes = "1"
-fnv = "1.0.5"
-itoa = "1"
+bytes = "1.10"
+fnv = "1.0"
+itoa = "1.0"
 
 [dev-dependencies]
 quickcheck = "1"

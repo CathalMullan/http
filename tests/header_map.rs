@@ -5,33 +5,31 @@ use http::*;
 fn smoke() {
     let mut headers = HeaderMap::new();
 
-    assert!(headers.get("hello").is_none());
+    assert!(headers.get(&"hello").is_none());
 
     let name: HeaderName = "hello".parse().unwrap();
 
-    match headers.entry(&name) {
-        Entry::Vacant(e) => {
-            e.insert("world".parse().unwrap());
-        }
-        _ => panic!(),
+    if let Entry::Vacant(e) = headers.entry(&name) {
+        e.insert("world".parse().unwrap());
+    } else {
+        panic!()
     }
 
-    assert!(headers.get("hello").is_some());
+    assert!(headers.get(&"hello").is_some());
 
-    match headers.entry(&name) {
-        Entry::Occupied(mut e) => {
-            assert_eq!(e.get(), &"world");
+    if let Entry::Occupied(mut e) = headers.entry(&name) {
+        assert_eq!(e.get(), &"world");
 
-            // Push another value
-            e.append("zomg".parse().unwrap());
+        // Push another value
+        e.append("zomg".parse().unwrap());
 
-            let mut i = e.iter();
+        let mut i = e.iter();
 
-            assert_eq!(*i.next().unwrap(), "world");
-            assert_eq!(*i.next().unwrap(), "zomg");
-            assert!(i.next().is_none());
-        }
-        _ => panic!(),
+        assert_eq!(*i.next().unwrap(), "world");
+        assert_eq!(*i.next().unwrap(), "zomg");
+        assert!(i.next().is_none());
+    } else {
+        panic!()
     }
 }
 
@@ -46,13 +44,13 @@ fn reserve_over_capacity() {
 #[test]
 fn with_capacity_max() {
     // The largest capacity such that (cap + cap / 3) < MAX_SIZE.
-    HeaderMap::<u32>::with_capacity(24_576);
+    drop(HeaderMap::<u32>::with_capacity(24_576));
 }
 
 #[test]
 #[should_panic]
 fn with_capacity_overflow() {
-    HeaderMap::<u32>::with_capacity(24_577);
+    drop(HeaderMap::<u32>::with_capacity(24_577));
 }
 
 #[test]
@@ -60,7 +58,7 @@ fn with_capacity_overflow() {
 fn reserve_overflow() {
     // See https://github.com/hyperium/http/issues/352
     let mut headers = HeaderMap::<u32>::with_capacity(0);
-    headers.reserve(std::usize::MAX); // next_power_of_two overflows
+    headers.reserve(usize::MAX); // next_power_of_two overflows
 }
 
 #[test]
@@ -74,9 +72,7 @@ fn reserve() {
     let reserved_cap = headers.capacity();
     assert!(
         reserved_cap >= requested_cap,
-        "requested {} capacity, but it reserved only {} entries",
-        requested_cap,
-        reserved_cap,
+        "requested {requested_cap} capacity, but it reserved only {reserved_cap} entries",
     );
 
     for i in 0..requested_cap {
@@ -168,7 +164,7 @@ fn drain_forget() {
     {
         let mut iter = headers.drain();
         assert_eq!(iter.size_hint(), (2, Some(2)));
-        let _ = iter.next().unwrap();
+        drop(iter.next().unwrap());
         std::mem::forget(iter);
     }
 
@@ -203,9 +199,8 @@ fn drain_entry() {
 
     // Using insert_mult
     {
-        let mut e = match headers.entry("hello") {
-            Entry::Occupied(e) => e,
-            _ => panic!(),
+        let Entry::Occupied(mut e) = headers.entry("hello") else {
+            panic!()
         };
 
         let vals: Vec<_> = e.insert_mult("wat".parse().unwrap()).collect();
@@ -276,12 +271,12 @@ fn as_header_name() {
 
     let expected = Some(&v);
 
-    assert_eq!(m.get("host"), expected);
+    assert_eq!(m.get(&"host"), expected);
     assert_eq!(m.get(&HOST), expected);
 
     let s = String::from("host");
     assert_eq!(m.get(&s), expected);
-    assert_eq!(m.get(s.as_str()), expected);
+    assert_eq!(m.get(&s.as_str()), expected);
 }
 
 #[test]
@@ -291,11 +286,12 @@ fn insert_all_std_headers() {
     for (i, hdr) in STD.iter().enumerate() {
         m.insert(hdr.clone(), hdr.as_str().parse().unwrap());
 
-        for j in 0..(i + 1) {
+        for j in 0..=i {
             assert_eq!(m[&STD[j]], STD[j].as_str());
         }
 
         if i != 0 {
+            #[allow(clippy::needless_range_loop)]
             for j in (i + 1)..STD.len() {
                 assert!(
                     m.get(&STD[j]).is_none(),
@@ -316,10 +312,11 @@ fn insert_79_custom_std_headers() {
     for (i, hdr) in hdrs.iter().enumerate() {
         h.insert(hdr.clone(), hdr.as_str().parse().unwrap());
 
-        for j in 0..(i + 1) {
+        for j in 0..=i {
             assert_eq!(h[&hdrs[j]], hdrs[j].as_str());
         }
 
+        #[allow(clippy::needless_range_loop)]
         for j in (i + 1)..hdrs.len() {
             assert!(h.get(&hdrs[j]).is_none());
         }
@@ -351,7 +348,7 @@ fn custom_std(n: usize) -> Vec<HeaderName> {
         .collect()
 }
 
-const STD: &'static [HeaderName] = &[
+const STD: &[HeaderName] = &[
     ACCEPT,
     ACCEPT_CHARSET,
     ACCEPT_ENCODING,
@@ -433,7 +430,7 @@ const STD: &'static [HeaderName] = &[
 fn get_invalid() {
     let mut headers = HeaderMap::new();
     headers.insert("foo", "bar".parse().unwrap());
-    assert!(headers.get("Evil\r\nKey").is_none());
+    assert!(headers.get(&"Evil\r\nKey").is_none());
 }
 
 #[test]
@@ -447,7 +444,7 @@ fn insert_invalid() {
 fn value_htab() {
     // RFC 7230 Section 3.2:
     // > field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
-    HeaderValue::from_static("hello\tworld");
+    drop(HeaderValue::from_static("hello\tworld"));
     HeaderValue::from_str("hello\tworld").unwrap();
 }
 
@@ -463,15 +460,15 @@ fn remove_multiple_a() {
 
     assert_eq!(headers.len(), 6);
 
-    let cookie = headers.remove(SET_COOKIE);
+    let cookie = headers.remove(&SET_COOKIE);
     assert_eq!(cookie, Some("cookie_1=value 1".parse().unwrap()));
     assert_eq!(headers.len(), 3);
 
-    let via = headers.remove(VIA);
+    let via = headers.remove(&VIA);
     assert_eq!(via, Some("1.1 example.com".parse().unwrap()));
     assert_eq!(headers.len(), 1);
 
-    let vary = headers.remove(VARY);
+    let vary = headers.remove(&VARY);
     assert_eq!(vary, Some("*".parse().unwrap()));
     assert_eq!(headers.len(), 0);
 }
@@ -488,15 +485,15 @@ fn remove_multiple_b() {
 
     assert_eq!(headers.len(), 6);
 
-    let vary = headers.remove(VARY);
+    let vary = headers.remove(&VARY);
     assert_eq!(vary, Some("*".parse().unwrap()));
     assert_eq!(headers.len(), 5);
 
-    let via = headers.remove(VIA);
+    let via = headers.remove(&VIA);
     assert_eq!(via, Some("1.1 example.com".parse().unwrap()));
     assert_eq!(headers.len(), 3);
 
-    let cookie = headers.remove(SET_COOKIE);
+    let cookie = headers.remove(&SET_COOKIE);
     assert_eq!(cookie, Some("cookie_1=value 1".parse().unwrap()));
     assert_eq!(headers.len(), 0);
 }
